@@ -8,7 +8,7 @@ import numpy as np
 try:
     import torch
     import torch.nn as nn
-except Exception:  # pragma: no cover - torch may be unavailable in the runtime
+except ImportError:  # pragma: no cover - torch may be unavailable in the runtime
     torch = None  # type: ignore
     nn = None  # type: ignore
 

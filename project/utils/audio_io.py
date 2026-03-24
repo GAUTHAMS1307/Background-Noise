@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable
 
 import librosa
 import numpy as np
 import soundfile as sf
 
 
-def load_audio(path: str | Path, target_sr: int) -> Tuple[np.ndarray, int]:
+def load_audio(path: str | Path, target_sr: int) -> tuple[np.ndarray, int]:
     audio, sr = librosa.load(path, sr=target_sr, mono=True)
     return audio.astype(np.float32), sr
 

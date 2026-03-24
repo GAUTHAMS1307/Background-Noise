@@ -50,7 +50,7 @@ def extract_features(
     stft = librosa.stft(frame, n_fft=n_fft, hop_length=hop, center=False)
     mag = np.abs(stft)
 
-    energy = float(np.mean(frame ** 2))
+    energy = float(np.mean(np.square(frame)))
     noise_power = _estimate_noise_power(mag)
     signal_power = float(np.mean(mag**2))
     snr_db = _safe_db(signal_power / (noise_power + 1e-8))

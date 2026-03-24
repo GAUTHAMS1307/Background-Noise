@@ -71,6 +71,15 @@ def spectral_gate(
         percentile, enabling adaptive suppression that tracks environment
         changes over time.
     """
+    signal = np.asarray(signal, dtype=np.float32)
+    if signal.size == 0:
+        return np.zeros_like(signal, dtype=np.float32)
+    # Extremely low-energy frames (e.g., dead-silent background capture) can
+    # trigger divide-by-zero warnings inside Wiener filtering. Short-circuit
+    # to silence for such cases so the backend remains stable for all inputs.
+    if float(np.sqrt(np.mean(signal ** 2))) < 1e-6:
+        return np.zeros_like(signal, dtype=np.float32)
+
     frame = 512
     hop = 128
     window = np.hanning(frame)

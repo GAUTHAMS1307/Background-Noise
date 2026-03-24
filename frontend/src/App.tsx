@@ -74,8 +74,10 @@ export default function App() {
       const source = ctx.createMediaStreamSource(mediaStream);
       sourceNodeRef.current = source;
 
-      // ScriptProcessorNode is deprecated but has the widest browser support for
-      // raw PCM access without AudioWorklet setup overhead.
+      // ScriptProcessorNode is deprecated in favour of AudioWorkletNode.
+      // It is retained here for maximum browser compatibility without requiring
+      // a bundled Worklet module.  A migration to AudioWorkletNode is recommended
+      // for production deployments targeting modern browsers.
       const proc = ctx.createScriptProcessor(BLOCK_SAMPLES, 1, 1);
       processorRef.current = proc;
 
@@ -92,9 +94,8 @@ export default function App() {
 
       proc.onaudioprocess = (ev: AudioProcessingEvent) => {
         const input = ev.inputBuffer.getChannelData(0);
-        // Send raw PCM int16 to the server
-        const pcm16 = new Int16Array(input.length);
-        for (let i = 0; i < input.length; i++) pcm16[i] = Math.max(-32768, Math.min(32767, input[i] * 32767));
+        // Convert Float32 → Int16 using typed arrays for performance.
+        const pcm16 = Int16Array.from(input, (x) => Math.max(-32768, Math.min(32767, (x * 32767) | 0)));
         if (ws.readyState === WebSocket.OPEN) ws.send(pcm16.buffer);
         // Write cleaned audio to output (or silence if nothing yet)
         const out = ev.outputBuffer.getChannelData(0);
@@ -102,6 +103,8 @@ export default function App() {
           const frame = pendingFrames.shift()!;
           const len = Math.min(frame.length, out.length);
           out.set(frame.subarray(0, len));
+          // Zero-fill any remaining samples when frame is shorter than the buffer.
+          if (len < out.length) out.fill(0, len);
         } else {
           out.fill(0);
         }

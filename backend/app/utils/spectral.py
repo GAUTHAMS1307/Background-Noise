@@ -36,11 +36,13 @@ class AdaptiveNoiseProfile:
         np.ndarray
             1-D noise-floor estimate ``(freq_bins,)``.
         """
-        frame_min = mag.min(axis=0)
+        # Use a low percentile rather than the bare minimum to avoid
+        # underestimation caused by transient signal peaks.
+        frame_floor = np.percentile(mag, 5, axis=0)
         if self._floor is None:
-            self._floor = frame_min.copy()
+            self._floor = frame_floor.copy()
         else:
-            self._floor = self.alpha * frame_min + (1.0 - self.alpha) * self._floor
+            self._floor = self.alpha * frame_floor + (1.0 - self.alpha) * self._floor
         return self._floor
 
     def reset(self) -> None:

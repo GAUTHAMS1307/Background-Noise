@@ -19,6 +19,8 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_BASE=http://backend:8000/api/v1
+      # Use localhost so that the browser (running outside Docker) can reach
+      # the backend via the published port rather than the internal hostname.
+      - VITE_API_BASE=http://localhost:8000/api/v1
     depends_on:
       - backend

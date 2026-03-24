@@ -13,9 +13,6 @@ async def stream(uri: str, sample_rate: int, block_size: int) -> None:
     send_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=32)
     # Use a deque as a lock-free ring-buffer for cleaned PCM frames played by the callback.
     playback_buf: deque[np.ndarray] = deque(maxlen=8)
-    _silence = np.zeros(block_size, dtype=np.float32)
-
-    loop = asyncio.get_running_loop()
 
     def callback(indata: np.ndarray, outdata: np.ndarray, frames: int, _time, status) -> None:
         if status:
@@ -28,12 +25,12 @@ async def stream(uri: str, sample_rate: int, block_size: int) -> None:
         except asyncio.QueueFull:
             pass
         # Play back the latest cleaned frame, or silence if none ready yet.
+        # Write directly into outdata to avoid per-callback allocation.
+        outdata[:, 0] = 0.0
         if playback_buf:
             cleaned = playback_buf.popleft()
-            out = cleaned[:frames] if len(cleaned) >= frames else np.pad(cleaned, (0, frames - len(cleaned)))
-        else:
-            out = _silence[:frames]
-        outdata[:, 0] = out
+            length = min(len(cleaned), frames)
+            outdata[:length, 0] = cleaned[:length]
 
     async with websockets.connect(uri, max_size=2**22) as ws:
         with sd.Stream(

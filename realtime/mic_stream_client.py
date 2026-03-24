@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import struct
+from collections import deque
 
 import numpy as np
 import sounddevice as sd
@@ -8,30 +9,52 @@ import websockets
 
 
 async def stream(uri: str, sample_rate: int, block_size: int) -> None:
-    queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=32)
+    """Stream microphone input to the denoiser WebSocket and play back cleaned audio."""
+    send_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=32)
+    # Use a deque as a lock-free ring-buffer for cleaned PCM frames played by the callback.
+    playback_buf: deque[np.ndarray] = deque(maxlen=8)
+    _silence = np.zeros(block_size, dtype=np.float32)
 
-    def callback(indata, outdata, frames, _time, status):
+    loop = asyncio.get_running_loop()
+
+    def callback(indata: np.ndarray, outdata: np.ndarray, frames: int, _time, status) -> None:
         if status:
             print(status)
+        # Enqueue raw mic data for sending.
         pcm = np.clip(indata[:, 0], -1.0, 1.0)
         packet = (pcm * 32767.0).astype(np.int16).tobytes()
         try:
-            queue.put_nowait(packet)
+            send_queue.put_nowait(packet)
         except asyncio.QueueFull:
             pass
-        outdata[:, 0] = indata[:, 0]
+        # Play back the latest cleaned frame, or silence if none ready yet.
+        if playback_buf:
+            cleaned = playback_buf.popleft()
+            out = cleaned[:frames] if len(cleaned) >= frames else np.pad(cleaned, (0, frames - len(cleaned)))
+        else:
+            out = _silence[:frames]
+        outdata[:, 0] = out
 
     async with websockets.connect(uri, max_size=2**22) as ws:
-        with sd.Stream(samplerate=sample_rate, channels=1, dtype="float32", blocksize=block_size, callback=callback):
+        with sd.Stream(
+            samplerate=sample_rate,
+            channels=1,
+            dtype="float32",
+            blocksize=block_size,
+            callback=callback,
+        ):
             print("Live streaming started. Ctrl+C to stop.")
             while True:
-                payload = await queue.get()
+                payload = await send_queue.get()
                 await ws.send(payload)
                 data = await ws.recv()
                 if isinstance(data, bytes) and len(data) > 4:
                     latency = struct.unpack("f", data[:4])[0]
                     if latency > 50:
                         print(f"Warning: latency {latency:.2f} ms")
+                    pcm_bytes = data[4:]
+                    cleaned = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32767.0
+                    playback_buf.append(cleaned)
 
 
 def main() -> None:

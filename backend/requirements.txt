@@ -12,3 +12,5 @@ torch==2.8.0
 torchaudio==2.8.0
 pesq==0.0.4
 pystoi==0.4.1
+pytest==8.3.5
+httpx==0.28.1

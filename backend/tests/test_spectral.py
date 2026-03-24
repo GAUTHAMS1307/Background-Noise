@@ -1,4 +1,5 @@
 """Tests for the spectral gating utility and adaptive noise profiling."""
+import warnings
 import numpy as np
 import pytest
 
@@ -34,8 +35,21 @@ class TestSpectralGate:
 
     def test_silence_in_silence_out(self):
         sig = np.zeros(8000, dtype=np.float32)
-        out = spectral_gate(sig, 16000)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            out = spectral_gate(sig, 16000)
+        assert len(caught) == 0
         assert np.allclose(out, 0.0, atol=1e-4)
+
+    def test_empty_signal_returns_empty(self):
+        sig = np.array([], dtype=np.float32)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            out = spectral_gate(sig, 16000)
+        assert len(caught) == 0
+        assert out.shape == sig.shape
+        assert out.dtype == np.float32
+        assert out.size == 0
 
     def test_noise_is_attenuated(self):
         """After gating, RMS of the signal should decrease."""

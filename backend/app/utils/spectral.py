@@ -2,6 +2,9 @@ import numpy as np
 from scipy.signal import butter, lfilter, wiener
 
 
+SILENCE_RMS_THRESHOLD = 1e-6  # 20*log10(1e-6) ≈ -120 dBFS for normalized audio; avoids Wiener warnings on near-silence
+
+
 def _bandpass(signal: np.ndarray, sr: int, low: int = 80, high: int = 7800) -> np.ndarray:
     nyquist = sr * 0.5
     low_n = max(0.001, low / nyquist)
@@ -71,6 +74,18 @@ def spectral_gate(
         percentile, enabling adaptive suppression that tracks environment
         changes over time.
     """
+    # Standardize to float32 since the downstream DSP path assumes normalized audio.
+    signal = np.asarray(signal, dtype=np.float32)
+    if signal.size == 0:
+        return np.zeros_like(signal)
+    # Extremely low-energy frames (e.g., dead-silent background capture) can
+    # trigger divide-by-zero warnings inside Wiener filtering. Short-circuit
+    # to silence for such cases so the backend remains stable for all inputs.
+    # Standard RMS computation keeps things vectorized and efficient for long buffers.
+    rms = np.sqrt(np.mean(np.square(signal)))
+    if rms < SILENCE_RMS_THRESHOLD:
+        return np.zeros_like(signal)
+
     frame = 512
     hop = 128
     window = np.hanning(frame)
